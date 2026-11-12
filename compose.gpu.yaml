@@ -1,0 +1,9 @@
+services:
+  embedding:
+    build:
+      args:
+        BGE_EXTRA: cuda
+    gpus: all
+    environment:
+      # Fail at startup rather than silently run on CPU if the GPU setup is broken.
+      EMBEDDING_DEVICE: cuda

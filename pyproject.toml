@@ -1,0 +1,49 @@
+[project]
+name = "bge-m3-embedding-server"
+version = "0.1.0"
+description = "OpenAI-compatible BGE-M3 embeddings for LiteLLM on EC2"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.34,<1",
+    "pydantic-settings>=2.7,<3",
+]
+
+[project.optional-dependencies]
+cpu = ["FlagEmbedding==1.4.2", "torch>=2.6,<3"]
+cuda = ["FlagEmbedding==1.4.2", "torch>=2.6,<3"]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "httpx>=0.28,<1", "ruff>=0.11,<1"]
+integration = ["litellm>=1.60,<2"]
+
+[tool.uv]
+conflicts = [[{ extra = "cpu" }, { extra = "cuda" }]]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cuda", extra = "cuda" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "integration: real LiteLLM HTTP client, no model download",
+    "model_runtime: real CPU inference using tiny generated local weights, requires cpu/cuda extra",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100

@@ -1,0 +1,15 @@
+# Install LiteLLM Proxy separately: uv tool install 'litellm[proxy]'
+# Export BGE_API_BASE=http://<EC2-private-ip>:8000/v1 and BGE_API_KEY=<server-key>.
+# Start: litellm --config examples/litellm.yaml --port 4000
+model_list:
+  - model_name: bge-m3
+    litellm_params:
+      model: openai/bge-m3
+      api_base: os.environ/BGE_API_BASE
+      api_key: os.environ/BGE_API_KEY
+    model_info:
+      mode: embedding
+
+# This is the CLIENT -> PROXY key, different from the PROXY -> BGE server key.
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
