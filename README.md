@@ -224,5 +224,3 @@ CPU runtime tests are skipped when model dependencies are absent. The suite does
 ## Scope
 
 The service does not provide ColBERT vectors, document chunking, token-ID input, dimensionality reduction, vector storage, or retrieval-score fusion. Hybrid output supplies two representations; search and ranking remain the responsibility of the consuming application.
-#   e m b e d d i n g - s e r v e r  
- 
