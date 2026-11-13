@@ -1,0 +1,60 @@
+name: bge-m3
+
+services:
+  embedding:
+    image: "${EMBEDDING_IMAGE:-ghcr.io/toanehihi/embedding-server:latest}"
+    pull_policy: always
+    restart: unless-stopped
+    env_file: .env
+    # No host port mapping: requests enter through Caddy on HTTPS.
+    expose:
+      - "8000"
+    volumes:
+      - model-cache:/home/app/.cache/huggingface
+    init: true
+    stop_grace_period: 60s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CADDY_DOMAIN: "${CADDY_DOMAIN:?Set CADDY_DOMAIN to a public domain pointing to this EC2 instance}"
+    volumes:
+      - type: bind
+        source: ./Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - embedding
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  model-cache:
+    # Shared with the documented docker run deployment; survives container recreation.
+    name: bge-m3-model-cache
+  caddy-data:
+    name: bge-m3-caddy-data
+  caddy-config:
+    name: bge-m3-caddy-config

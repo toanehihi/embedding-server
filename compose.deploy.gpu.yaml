@@ -1,0 +1,5 @@
+# Registry deployment override: expose NVIDIA GPUs without adding a source build.
+# EMBEDDING_DEVICE remains controlled by .env (auto/cpu/cuda).
+services:
+  embedding:
+    gpus: all

@@ -125,25 +125,6 @@ A single worker avoids duplicate model allocations. Additional workers or replic
 
 Remote model assets are resolved into a common Hugging Face snapshot. Both `sparse_linear.pt` and `colbert_linear.pt` must be present alongside the encoder and tokenizer; incomplete auxiliary heads cause startup failure rather than random sparse-head initialization. `EMBEDDING_MODEL_REVISION` can pin remote assets to a commit.
 
-## Deployment model
-
-### Published image
-
-[GitHub Actions](.github/workflows/publish-image.yaml) runs tests and lint checks, builds the container, and publishes it to `ghcr.io/<owner>/<repository>`. Repository and owner names are lowercased automatically.
-
-| Tag | Source |
-| --- | --- |
-| `latest` | Pushes to the repository's default branch |
-| `sha-<full-commit-sha>` | Commit associated with a completed build |
-| `branch-<branch-name>` | Latest completed build for a branch; tag names are sanitized |
-| `v*` | Matching Git tags |
-
-Publication is triggered by GitHub pushes or manual workflow dispatch, not local commits. A newer run on the same ref cancels the previous run. Image digests provide immutable deployment references.
-
-The workflow uses `GITHUB_TOKEN` with package-write permission. Package visibility is not changed by the workflow; private packages require authenticated pulls.
-
-Production hosts require the image, runtime environment configuration, and a persistent model-cache volume—not the repository, Python, or uv. Image publication does not automatically deploy to a host. Updating an existing container requires recreation; pulling alone does not change its running image.
-
 ### CPU and GPU behavior
 
 The published image contains PyTorch CUDA 12.8 and supports CPU fallback with `EMBEDDING_DEVICE=auto`. GPU containers additionally require a compatible host NVIDIA driver, NVIDIA Container Toolkit, and GPU device exposure such as `--gpus all`.
@@ -162,12 +143,29 @@ Device auto-selection happens inside the application. Docker GPU reservations ar
 | --- | --- |
 | [Dockerfile](Dockerfile) | Shared CPU/GPU image by default; `BGE_EXTRA=cpu` selects a smaller CPU-only build |
 | [compose.yaml](compose.yaml) | Source-based CPU build and local runtime configuration |
-| [compose.gpu.yaml](compose.gpu.yaml) | Compose override selecting CUDA dependencies, exposing GPUs, and forcing `EMBEDDING_DEVICE=cuda` |
+| [compose.gpu.yaml](compose.gpu.yaml) | Source-build override selecting CUDA dependencies, exposing GPUs, and forcing `EMBEDDING_DEVICE=cuda` |
+| [compose.deploy.yaml](compose.deploy.yaml) | Registry deployment with embedding service and Caddy HTTPS proxy |
+| [Caddyfile](Caddyfile) | HTTPS reverse proxy configuration, mounted read-only into Caddy |
+| [compose.deploy.gpu.yaml](compose.deploy.gpu.yaml) | Registry deployment override exposing NVIDIA GPUs; device selection remains controlled by `.env` |
 | [.env.example](.env.example) | Runtime environment reference |
 
-The GPU Compose override is combined with the base Compose file; it is not required for direct execution of a registry image. Its `gpus` configuration requires Docker Compose 2.30 or later.
+Source-build and registry-deployment Compose files are separate alternatives. Each GPU override is combined with its corresponding base file. GPU configurations require Docker Compose 2.30 or later and a configured NVIDIA runtime.
 
-Containers run as a non-root user. Model weights are downloaded at startup rather than embedded in the image. The image cache location is `/home/app/.cache/huggingface`; a persistent volume preserves downloads across container replacements. Initial startup requires network access unless a complete snapshot is already cached. Offline cache operation is supported through `HF_HUB_OFFLINE=1`.
+Registry deployment command references:
+
+```bash
+# CPU deployment or update
+docker compose -f compose.deploy.yaml up -d
+
+# GPU deployment or update
+docker compose -f compose.deploy.yaml -f compose.deploy.gpu.yaml up -d
+```
+
+The registry deployment reads `.env`, defaults to `ghcr.io/toanehihi/embedding-server:latest`, and pulls the image on each `up`. `EMBEDDING_IMAGE` overrides the image reference with a tag or digest. Private packages require registry authentication. The named volume `bge-m3-model-cache` preserves weights and is compatible with the direct Docker deployment cache; `down -v` removes it.
+
+Only Caddy publishes host ports: TCP 80 and 443. The embedding service is reachable internally at `embedding:8000`, not directly on the EC2 host. Existing services using ports 80/443 must be stopped or reconfigured before deployment.
+
+The embedding container runs as a non-root user. Model weights are downloaded at startup rather than embedded in the image. The image cache location is `/home/app/.cache/huggingface`; a persistent volume preserves downloads across container replacements. Initial startup requires network access unless a complete snapshot is already cached. Offline cache operation is supported through `HF_HUB_OFFLINE=1`.
 
 The image healthcheck targets `/readyz`. Docker marks failed healthchecks as unhealthy but does not restart a container solely because of that state.
 
@@ -188,7 +186,7 @@ Settings are loaded from environment variables or `.env`.
 | `EMBEDDING_MAX_SEQ_LENGTH` | `8192` | Maximum tokens per input, including special tokens |
 | `EMBEDDING_MAX_TOTAL_TOKENS` | `16384` | Maximum aggregate tokens per request |
 
-`HF_HOME` controls the Hugging Face cache location outside the container default. Compose additionally reads `BIND_HOST` and `PORT`, defaulting to `127.0.0.1` and `8000`; these variables do not configure Uvicorn or `docker run` port mappings.
+`HF_HOME` controls the Hugging Face cache location outside the container default. Registry deployment requires `CADDY_DOMAIN` for HTTPS and optionally accepts `EMBEDDING_IMAGE` for an image tag or digest. Only source-build Compose reads `BIND_HOST` and `PORT`, defaulting to `127.0.0.1` and `8000`; these variables do not configure Uvicorn or registry-deployment ports.
 
 Token and batch limits are admission controls, not memory guarantees. Long inputs can exhaust memory even at a microbatch size of one.
 
